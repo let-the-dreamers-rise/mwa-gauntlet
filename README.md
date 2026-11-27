@@ -23,7 +23,7 @@ mwa-gauntlet does. Its tests run **inside walletlib's own Robolectric suite**, a
 
 With the patch, the full existing `common`, `walletlib` and `clientlib` unit suites still pass. CI checks all of this on every push and weekly. It also re-runs the tests against upstream `main`, to show which findings still reproduce.
 
-Details, causes and fixes are in [FINDINGS.md](FINDINGS.md). These four only affect the dapp that sends the malformed message, so they are public.
+Details, causes and fixes are in [FINDINGS.md](FINDINGS.md). These four only affect the dapp that sends the malformed message, so they are public, and each is filed upstream: M3 [#1841](https://github.com/solana-mobile/mobile-wallet-adapter/issues/1841), M4 [#1842](https://github.com/solana-mobile/mobile-wallet-adapter/issues/1842), M5 [#1843](https://github.com/solana-mobile/mobile-wallet-adapter/issues/1843), M6 [#1844](https://github.com/solana-mobile/mobile-wallet-adapter/issues/1844).
 
 **Disclosure note:** four further walletlib findings were reported privately to the MWA maintainers on 27 Nov 2026, with a patch and tests. Their tests are not in this repository and will be added once they are fixed or the maintainers agree to disclosure.
 
