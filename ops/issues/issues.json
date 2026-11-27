@@ -1,0 +1,18 @@
+[
+ {
+  "key": "m3",
+  "title": "walletlib: get_capabilities with non-empty params sends two responses for one request id"
+ },
+ {
+  "key": "m4",
+  "title": "walletlib: some malformed requests (sign_messages without addresses, bad sign_in_payload) never get a response"
+ },
+ {
+  "key": "m5",
+  "title": "walletlib: signed HELLO_REQ with an invalid P-256 point leaves the session hanging instead of terminating it"
+ },
+ {
+  "key": "m6",
+  "title": "common: encrypted frame shorter than 4 bytes is silently ignored instead of terminating the session"
+ }
+]
