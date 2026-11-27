@@ -1,0 +1,35 @@
+name: gauntlet
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * 1"   # weekly: also re-checks upstream main
+
+jobs:
+  run:
+    name: ${{ matrix.mode }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [pinned, patched, upstream-main]
+    continue-on-error: ${{ matrix.mode == 'upstream-main' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run gauntlet (${{ matrix.mode }})
+        run: scripts/run.sh ${{ matrix.mode }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports-${{ matrix.mode }}
+          path: work/mwa/android/*/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14

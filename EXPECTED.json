@@ -1,0 +1,19 @@
+{
+  "suite": "com.solana.mobilewalletadapter.walletlib.scenario.ProtocolRobustnessTest",
+  "pinned": {
+    "_comment": "Upstream at MWA_REF, unpatched. These tests fail because the finding reproduces.",
+    "expected_failures": [
+      "m3_getCapabilitiesWithParamsGetsOneReply",
+      "m4a_signMessagesWithoutAddresses",
+      "m4b_signMessagesWithNullAddress",
+      "m4c_authorizeWithInvalidSignInPayload",
+      "m5a_signedHelloWithWrongPointPrefix",
+      "m5b_signedHelloWithPointOffTheCurve",
+      "m6_encryptedFrameShorterThanHeader"
+    ]
+  },
+  "patched": {
+    "_comment": "Upstream at MWA_REF with patches/public-fixes.patch. Everything passes.",
+    "expected_failures": []
+  }
+}

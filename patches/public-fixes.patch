@@ -1,0 +1,115 @@
+diff --git a/android/common/src/main/java/com/solana/mobilewalletadapter/common/crypto/ECDSAKeys.java b/android/common/src/main/java/com/solana/mobilewalletadapter/common/crypto/ECDSAKeys.java
+index 35b92a1..dba718d 100644
+--- a/android/common/src/main/java/com/solana/mobilewalletadapter/common/crypto/ECDSAKeys.java
++++ b/android/common/src/main/java/com/solana/mobilewalletadapter/common/crypto/ECDSAKeys.java
+@@ -11,6 +11,7 @@ import java.security.AlgorithmParameters;
+ import java.security.KeyFactory;
+ import java.security.NoSuchAlgorithmException;
+ import java.security.interfaces.ECPublicKey;
++import java.security.spec.ECFieldFp;
+ import java.security.spec.ECGenParameterSpec;
+ import java.security.spec.ECParameterSpec;
+ import java.security.spec.ECPoint;
+@@ -52,13 +53,31 @@ public class ECDSAKeys {
+         try {
+             final AlgorithmParameters algParams = AlgorithmParameters.getInstance("EC");
+             algParams.init(new ECGenParameterSpec("secp256r1"));
+-            final ECPublicKeySpec ecPublicKeySpec = new ECPublicKeySpec(w,
+-                    algParams.getParameterSpec(ECParameterSpec.class));
++            final ECParameterSpec params = algParams.getParameterSpec(ECParameterSpec.class);
++            if (!isOnCurve(w, params)) {
++                throw new IllegalArgumentException("input is not a point on EC P-256");
++            }
++            final ECPublicKeySpec ecPublicKeySpec = new ECPublicKeySpec(w, params);
+             return (ECPublicKey) KeyFactory.getInstance("EC").generatePublic(ecPublicKeySpec);
+         } catch (NoSuchAlgorithmException | InvalidParameterSpecException | InvalidKeySpecException e) {
+             throw new UnsupportedOperationException("Error decoding EC P-256 public key", e);
+         }
+     }
+ 
++    // y^2 = x^3 + ax + b (mod p), with 0 <= x, y < p
++    private static boolean isOnCurve(@NonNull ECPoint w, @NonNull ECParameterSpec params) {
++        final BigInteger p = ((ECFieldFp) params.getCurve().getField()).getP();
++        final BigInteger x = w.getAffineX();
++        final BigInteger y = w.getAffineY();
++        if (x.signum() < 0 || x.compareTo(p) >= 0 || y.signum() < 0 || y.compareTo(p) >= 0) {
++            return false;
++        }
++        final BigInteger lhs = y.multiply(y).mod(p);
++        final BigInteger rhs = x.multiply(x).multiply(x)
++                .add(params.getCurve().getA().multiply(x))
++                .add(params.getCurve().getB()).mod(p);
++        return lhs.equals(rhs);
++    }
++
+     private ECDSAKeys() {}
+ }
+diff --git a/android/common/src/main/java/com/solana/mobilewalletadapter/common/protocol/MobileWalletAdapterSessionCommon.java b/android/common/src/main/java/com/solana/mobilewalletadapter/common/protocol/MobileWalletAdapterSessionCommon.java
+index aa2ad89..d1a2df0 100644
+--- a/android/common/src/main/java/com/solana/mobilewalletadapter/common/protocol/MobileWalletAdapterSessionCommon.java
++++ b/android/common/src/main/java/com/solana/mobilewalletadapter/common/protocol/MobileWalletAdapterSessionCommon.java
+@@ -208,6 +208,10 @@ public abstract class MobileWalletAdapterSessionCommon implements MessageReceive
+             throw new IllegalStateException("Cannot decrypt, no session key has been established");
+         }
+ 
++        if (payload.length < SEQ_NUM_LENGTH_BYTES + AES_IV_LENGTH_BYTES + AES_TAG_LENGTH_BYTES) {
++            throw new SessionMessageException("Encrypted message is shorter than its header and tag");
++        }
++
+         final int seqNum = ByteBuffer.wrap(payload, 0, SEQ_NUM_LENGTH_BYTES).getInt(); // Big-endian
+         if (seqNum != (mSeqNumberRx + 1)) {
+             throw new SessionMessageException("Encrypted messages has invalid sequence number");
+diff --git a/android/walletlib/src/main/java/com/solana/mobilewalletadapter/walletlib/protocol/MobileWalletAdapterServer.java b/android/walletlib/src/main/java/com/solana/mobilewalletadapter/walletlib/protocol/MobileWalletAdapterServer.java
+index 07d4e91..7b9f4ad 100644
+--- a/android/walletlib/src/main/java/com/solana/mobilewalletadapter/walletlib/protocol/MobileWalletAdapterServer.java
++++ b/android/walletlib/src/main/java/com/solana/mobilewalletadapter/walletlib/protocol/MobileWalletAdapterServer.java
+@@ -97,6 +97,15 @@ public class MobileWalletAdapterServer extends JsonRpc20Server {
+             }
+         } catch (IOException e) {
+             Log.e(TAG, "Failed sending response for id=" + id, e);
++        } catch (RuntimeException e) {
++            // A malformed request must still get a response (JSON-RPC 2.0); otherwise the
++            // exception is dropped by the transport and the dapp waits for its own timeout.
++            Log.w(TAG, "Invalid params for method '" + method + "', id=" + id, e);
++            try {
++                handleRpcError(id, JsonRpc20Server.ERROR_INVALID_PARAMS, "params are not valid", null);
++            } catch (IOException e2) {
++                Log.e(TAG, "Failed sending ERROR_INVALID_PARAMS response for id=" + id, e2);
++            }
+         }
+     }
+ 
+@@ -498,6 +507,7 @@ public class MobileWalletAdapterServer extends JsonRpc20Server {
+         final JSONObject o = (JSONObject) params;
+         if (o.keys().hasNext()) {
+             handleRpcError(id, ERROR_INVALID_PARAMS, "params expected to be empty", null);
++            return;
+         }
+ 
+         final JSONObject result = new JSONObject();
+diff --git a/android/walletlib/src/main/java/com/solana/mobilewalletadapter/walletlib/protocol/MobileWalletAdapterSession.java b/android/walletlib/src/main/java/com/solana/mobilewalletadapter/walletlib/protocol/MobileWalletAdapterSession.java
+index a242b9f..580a778 100644
+--- a/android/walletlib/src/main/java/com/solana/mobilewalletadapter/walletlib/protocol/MobileWalletAdapterSession.java
++++ b/android/walletlib/src/main/java/com/solana/mobilewalletadapter/walletlib/protocol/MobileWalletAdapterSession.java
+@@ -72,7 +72,11 @@ public class MobileWalletAdapterSession extends MobileWalletAdapterSessionCommon
+ 
+         // Generate an EC key on the P-256 curve, and do ECDH to produce the shared secret
+         final ECPublicKey ourPublicKey = generateSessionECDHKeyPair();
+-        generateSessionECDHSecret(theirPublicKey);
++        try {
++            generateSessionECDHSecret(theirPublicKey);
++        } catch (UnsupportedOperationException | IllegalArgumentException e) {
++            throw new SessionMessageException("ECDH with the HELLO_REQ public key failed", e);
++        }
+         doSessionEstablished();
+ 
+         // Send a response to allow the counterparty to perform ECDH as well
+@@ -119,7 +123,7 @@ public class MobileWalletAdapterSession extends MobileWalletAdapterSessionCommon
+         final ECPublicKey otherPublicKey;
+         try {
+             otherPublicKey = ECDSAKeys.decodeP256PublicKey(message);
+-        } catch (UnsupportedOperationException e) {
++        } catch (UnsupportedOperationException | IllegalArgumentException e) {
+             throw new SessionMessageException("Failed decoding HELLO_REQ payload as EC P-256 public key", e);
+         }
+         Log.v(TAG, "Received public key " + otherPublicKey.getW().getAffineX() + "/" +
