@@ -33,5 +33,5 @@ Fix: catch both in `parseHelloReq`. Check explicitly that the point is on P-256,
 
 An encrypted frame shorter than the 4-byte sequence number plus IV and tag is ignored, and the session continues. Any other invalid frame, such as one with a bad tag (reference test), ends the session.
 
-Cause: `ByteBuffer.wrap(payload, 0, 4).getInt()` throws `BufferUnderflowException` before any check, and it is not a `SessionMessageException`.
+Cause: `ByteBuffer.wrap(payload, 0, 4)` throws `IndexOutOfBoundsException` for a shorter payload before any check, and it is not a `SessionMessageException`.
 Fix: reject frames shorter than sequence number + IV + tag with a `SessionMessageException`.
